@@ -1,7 +1,7 @@
-#H1 PC Metrics Analytics with a Data Lakehouse
+# PC Metrics Analytics with a Data Lakehouse
 This project implements a complete data pipeline to collect, process, and store PC system metrics. It's built on a Data Lakehouse architecture, using modern tools to demonstrate robust and scalable data ingestion across different layers.
 
-🚀 Technologies Used
+## 🚀 Technologies Used
 Prefect: Orchestrates the data pipeline, ensuring that data collection and processing tasks run reliably and on a schedule.
 
 MinIO: An S3-compatible object storage server that acts as both the Landing Zone for raw data and the Warehouse for the Iceberg tables.
@@ -12,7 +12,7 @@ PyArrow/Pandas: Libraries for manipulating and processing data in Parquet format
 
 Docker Compose: A tool to orchestrate all services (MinIO, Prefect, and the Iceberg REST Catalog) in an isolated and easy-to-configure local environment.
 
-🏗️ Pipeline Architecture
+## 🏗️ Pipeline Architecture
 The pipeline operates in three main stages:
 
 Data Collection: A Prefect task collects system metrics (CPU, memory, disk, network) using the psutil library. The data is formatted into a dictionary.
