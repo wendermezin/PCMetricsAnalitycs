@@ -1,0 +1,20 @@
+# .gitignore
+
+# Ignora o ambiente virtual
+/venv/
+
+# Ignora arquivos de cache do Python
+__pycache__/
+*.pyc
+
+# Ignora arquivos de dados gerados
+*.jsonl
+/data/
+
+# Ignora arquivos de estado do Terraform
+.terraform/
+terraform.tfstate
+terraform.tfstate.backup
+
+# Ignora arquivos sensíveis
+.env

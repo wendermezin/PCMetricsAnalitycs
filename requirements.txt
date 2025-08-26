@@ -1,0 +1,9 @@
+prefect[orion]
+pandas
+psutil
+fastparquet
+pyarrow
+pyiceberg
+fsspec
+minio
+io
