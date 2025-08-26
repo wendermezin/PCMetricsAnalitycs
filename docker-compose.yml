@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # Serviço para o MinIO (Landing Zone e Data Warehouse)
+  # MinIO (armazenamento S3 local)
   minio:
     image: minio/minio:latest
     container_name: minio_server
@@ -9,71 +9,42 @@ services:
       - "9000:9000"
       - "9001:9001"
     volumes:
-      - ./minio_data:/data # Mapeia um diretório local para persistir os dados
+      - ./minio_data:/data
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
       MINIO_BROWSER_REDIRECT_URL: "http://localhost:9001"
     command: server /data --console-address ":9001"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live || exit 1"]
       interval: 30s
       timeout: 20s
       retries: 3
     networks:
-      - prefect-iceberg-net
+      - pcmetrics_net
 
-  # Serviço para o Iceberg REST Catalog
-  rest-catalog:
-    image: tabulario/tab-rest:latest # <-- Imagem corrigida novamente
-    container_name: iceberg_rest_catalog
-    ports:
-      - "8181:8181"
-    environment:
-      # Configura o S3 do MinIO como o armazenamento do catálogo
-      CATALOG_WAREHOUSE: s3://warehouse/
-      CATALOG_S3_ENDPOINT: http://minio:9000
-      CATALOG_S3_ACCESS_KEY: minioadmin
-      CATALOG_S3_SECRET_KEY: minioadmin
-      CATALOG_S3_PATH_STYLE_ACCESS: "true"
+  # Airflow
+  airflow:
+    image: apache/airflow:2.7.1
+    container_name: airflow_server
+    restart: always
     depends_on:
       - minio
-    networks:
-      - prefect-iceberg-net
-
-  # Serviço para o Prefect Server e o Worker
-  prefect-server:
-    image: prefecthq/prefect:latest
-    container_name: prefect_server
+    environment:
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__CORE__EXECUTOR: "LocalExecutor"
+      AIRFLOW__CORE__FERNET_KEY: "YOUR_FERNET_KEY" # gerar com `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+      AIRFLOW__CORE__SQL_ALCHEMY_CONN: "sqlite:////root/airflow/airflow.db"
+      AIRFLOW__CORE__DAGS_FOLDER: "/root/airflow/dags"
+    volumes:
+      - ./dags:/root/airflow/dags
+      - ./logs:/root/airflow/logs
     ports:
-      - "4200:4200"
-    volumes:
-      - .:/app # Mapeia o diretório do seu projeto para o container
-    environment:
-      PREFECT_API_URL: http://prefect-server:4200/api
-    command: prefect server start
-    healthcheck:
-      test: ["CMD-SHELL", "prefect config view | grep 'PREFECT_API_URL'"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      - "8080:8080"
+    command: bash -c "airflow db init && airflow webserver & airflow scheduler"
     networks:
-      - prefect-iceberg-net
+      - pcmetrics_net
 
-  prefect-worker:
-    image: prefecthq/prefect:latest
-    container_name: prefect_worker
-    volumes:
-      - .:/app
-    environment:
-      PREFECT_API_URL: http://prefect-server:4200/api
-    command: prefect worker start -p "default" -l "prefect-worker-1" --pool "default-agent-pool"
-    depends_on:
-      - prefect-server
-    networks:
-      - prefect-iceberg-net
-
-# Rede para os serviços se comunicarem
 networks:
-  prefect-iceberg-net:
+  pcmetrics_net:
     driver: bridge

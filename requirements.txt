@@ -7,3 +7,4 @@ pyiceberg
 fsspec
 minio
 io
+s3fs
