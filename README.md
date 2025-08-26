@@ -1,28 +1,65 @@
-# PC Monitoring and Analytics Platform
+# PC Metrics Analytics with a Data Lakehouse
+This project implements a complete data pipeline to collect, process, and store PC system metrics. It's built on a Data Lakehouse architecture, using modern tools to demonstrate robust and scalable data ingestion across different layers.
 
-Bem-vindo ao meu projeto pessoal de engenharia de dados, focado em monitorar e analisar métricas de um computador local. Esta plataforma utiliza uma arquitetura de dados moderna e open-source para coletar, orquestrar, armazenar e visualizar dados de desempenho do PC.
+## 🚀 Technologies Used
+Prefect: Orchestrates the data pipeline, ensuring that data collection and processing tasks run reliably and on a schedule.
 
-## Arquitetura
+MinIO: An S3-compatible object storage server that acts as both the Landing Zone for raw data and the Warehouse for the Iceberg tables.
 
-O projeto é baseado em uma arquitetura de dados sem contêineres, com os seguintes componentes:
+Apache Iceberg: An open-source table format for data lakes, providing ACID transactions and evolving schemas, ideal for the Bronze layer.
 
-- **ETL:** Python com `psutil` para coleta de dados e Apache Iceberg para formato de tabela.
-- **Orchestration:** Prefect para agendamento e execução de fluxos de trabalho.
-- **BI - Analytics:** Apache Superset para análise e dashboards históricos.
-- **Observability:** Grafana para visualização em tempo real.
-- **Catalog:** DataHub para descoberta de dados e metadados.
+PyArrow/Pandas: Libraries for manipulating and processing data in Parquet format.
 
-## Como Rodar o Projeto
+Docker Compose: A tool to orchestrate all services (MinIO, Prefect, and the Iceberg REST Catalog) in an isolated and easy-to-configure local environment.
 
-### Pré-requisitos
+## 🏗️ Pipeline Architecture
+The pipeline operates in three main stages:
 
-- Python 3.8+
-- Os serviços de backend (Prefect, Superset, Grafana, DataHub) devem ser instalados e rodados localmente.
+Data Collection: A Prefect task collects system metrics (CPU, memory, disk, network) using the psutil library. The data is formatted into a dictionary.
 
-### 1. Configurar o Ambiente
+Landing Zone (MinIO): The next task receives the raw data, converts it to the Parquet format, and stores the file in MinIO under the landing/pc_metrics/ path.
 
-1. Clone este repositório.
-2. Abra o projeto no VS Code.
-3. Abra o terminal integrado e crie um ambiente virtual:
-   ```bash
-   python -m venv venv
+Bronze Layer (Iceberg): A final task reads the Parquet file from the Landing Zone and appends it to an Iceberg table named bronze.pc_metrics. This table is managed by the Iceberg REST Catalog and stored within MinIO.
+
+This layered approach allows for data validation and transformation before moving to subsequent stages (Silver and Gold), ensuring data quality and reliability.
+
+## ⚙️ How to Run the Project
+This guide will help you set up and run the pipeline using docker-compose.
+
+### Prerequisites
+Docker Desktop installed and running.
+
+1. Environment Setup
+Open your terminal in the root of the project (where the docker-compose.yml file is located) and run the following command:
+
+docker-compose up -d
+
+This command will download the necessary images and start the following services:
+
+minio_server: MinIO on port 9000 (Console on port 9001).
+
+rest_catalog: The Iceberg REST Catalog on port 8181.
+
+prefect_server: The Prefect UI server on port 4200.
+
+prefect_worker: The Prefect worker, ready to execute tasks.
+
+2. Verify Services
+You can access the user interfaces to check if everything is running correctly:
+
+MinIO Console: http://localhost:9001 (User/Password: minioadmin/minioadmin)
+
+Prefect UI: http://localhost:4200
+
+3. Run the Workflow
+With the services running, you can now execute the Prefect workflow. The main flow is defined in src/flows/monitor_flow.py.
+
+First, make sure your Python dependencies are installed:
+
+pip install -r requirements.txt
+
+To deploy and run the flow, execute the following command from the project root:
+
+prefect deploy --name "pc-metrics-pipeline" --flow-name "monitor-flow" --work-pool "default-agent-pool" --entrypoint "src/flows/monitor_flow.py:monitor_flow" --override "is_schedule=False" --no-prompt
+
+After deployment, the Prefect worker will start executing the task. You can monitor the progress in real-time on the Prefect UI.
