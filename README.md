@@ -1,4 +1,4 @@
-PC Metrics Analytics with a Data Lakehouse
+#H1 PC Metrics Analytics with a Data Lakehouse
 This project implements a complete data pipeline to collect, process, and store PC system metrics. It's built on a Data Lakehouse architecture, using modern tools to demonstrate robust and scalable data ingestion across different layers.
 
 🚀 Technologies Used
