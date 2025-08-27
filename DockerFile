@@ -1,0 +1,22 @@
+FROM apache/airflow:2.9.0
+
+ENV PYTHONPATH="/opt/airflow:${PYTHONPATH}"
+
+USER root
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential
+
+USER airflow
+
+WORKDIR /opt/airflow
+
+COPY requirements.txt .
+
+RUN pip install --no-cache-dir -r requirements.txt \
+    "apache-airflow[minio,s3]" \
+    "pyiceberg[s3]" \
+    "psycopg2-binary"
+
+COPY ./dags /opt/airflow/dags
+COPY ./src /opt/airflow/src

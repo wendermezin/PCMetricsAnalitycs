@@ -15,6 +15,6 @@ provider "minio" {
 }
 
 resource "minio_bucket" "metrics_bucket" {
-  bucket = "pc-metrics"
+  bucket = "pcmetrics"
   acl    = "public-read-write"
 }

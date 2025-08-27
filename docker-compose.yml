@@ -1,50 +1,147 @@
-version: '3.8'
 
 services:
-  # MinIO (armazenamento S3 local)
+  # MinIO
   minio:
     image: minio/minio:latest
-    container_name: minio_server
+    container_name: minio
+    restart: always
     ports:
       - "9000:9000"
       - "9001:9001"
-    volumes:
-      - ./minio_data:/data
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-      MINIO_BROWSER_REDIRECT_URL: "http://localhost:9001"
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - pcmetrics_net
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live || exit 1"]
+      test: ["CMD", "curl", "--fail", "http://localhost:9000/minio/health/live"]
       interval: 30s
       timeout: 20s
       retries: 3
+    
+  # Postgres
+  postgres:
+    image: postgres:13
+    container_name: postgres_db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: pc_metrics_analytics
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
     networks:
       - pcmetrics_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      retries: 5
+      timeout: 5s
+
+  # Iceberg REST Catalog
+  iceberg_catalog:
+    image: apache/polaris:latest
+    container_name: iceberg_catalog
+    restart: always
+    ports:
+      - "8181:8181"
+    environment:
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      AWS_S3_PATH_STYLE_ACCESS: "true"
+      CATALOG_S3_IMPL: org.apache.iceberg.aws.s3.S3FileIO
+      CATALOG_S3_ENDPOINT: http://minio:9000
+      CATALOG_WAREHOUSE_LOCATION: s3://pcmetrics/warehouse
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - pcmetrics_net
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8181/v1/health"]
+      interval: 10s
+      retries: 3
+      timeout: 5s
+    # Added volume to persist data
+    volumes:
+      - iceberg_catalog_data:/home/iceberg
+      
+  # Container auxiliar para criar namespace bronze no Iceberg
+  init_iceberg:
+    image: curlimages/curl:latest
+    container_name: init_iceberg
+    depends_on:
+      iceberg_catalog:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      until curl --fail --silent --output /dev/null http://iceberg_catalog:8181/v1/health; do
+        echo 'Waiting for Iceberg REST to start...';
+        sleep 5;
+      done;
+      echo 'Creating 'bronze' namespace...';
+      # Check if namespace already exists (HTTP 409 Conflict)
+      curl -X POST http://iceberg_catalog:8181/v1/namespaces -H 'Content-Type: application/json' -d '{\"namespace\": [\"bronze\"]}' || true;
+      echo 'Namespace created or already exists.'
+      "
+    networks:
+      - pcmetrics_net
+    restart: "no"
 
   # Airflow
   airflow:
-    image: apache/airflow:2.7.1
+    build: .
     container_name: airflow_server
     restart: always
-    depends_on:
-      - minio
     environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://postgres:${POSTGRES_PASSWORD}@postgres_db:5432/pc_metrics_analytics
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "False"
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
-      AIRFLOW__CORE__EXECUTOR: "LocalExecutor"
-      AIRFLOW__CORE__FERNET_KEY: "YOUR_FERNET_KEY" # gerar com `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
-      AIRFLOW__CORE__SQL_ALCHEMY_CONN: "sqlite:////root/airflow/airflow.db"
-      AIRFLOW__CORE__DAGS_FOLDER: "/root/airflow/dags"
+      MINIO_HOST: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET: pcmetrics
+      ICEBERG_CATALOG_URI: http://iceberg_catalog:8181
+      # FIX: Correct this variable to match the Iceberg catalog's warehouse location
+      ICEBERG_WAREHOUSE: s3://pcmetrics/warehouse
+      # The rest of the S3 environment variables for the airflow container
+      AWS_ENDPOINT_URL_S3: http://minio:9000
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      AWS_S3_PATH_STYLE_ACCESS: "true"
+      CATALOG_WAREHOUSE_LOCATION: s3a://bronze/warehouse
     volumes:
-      - ./dags:/root/airflow/dags
-      - ./logs:/root/airflow/logs
+      - ./entrypoint.sh:/opt/airflow/entrypoint.sh
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./src:/opt/airflow/src
     ports:
       - "8080:8080"
-    command: bash -c "airflow db init && airflow webserver & airflow scheduler"
+    entrypoint: ["/bin/bash", "/opt/airflow/entrypoint.sh"]
+    depends_on:
+      minio:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      iceberg_catalog:
+        condition: service_healthy
+      init_iceberg:
+        condition: service_completed_successfully
     networks:
       - pcmetrics_net
 
 networks:
   pcmetrics_net:
     driver: bridge
+
+volumes:
+  minio_data:
+  postgres_data:
+  iceberg_catalog_data:

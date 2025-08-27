@@ -1,0 +1,13 @@
+{
+    "POSTGRES_PASSWORD": "Fcbar123!",
+    "AIRFLOW_FERNET_KEY": "HDXGtv4eB5QPjIWFFmNKrfng-GCFpjE9otYV8-SsM7M=",
+    "MINIO_ROOT_USER": "minioadmin",
+    "MINIO_ROOT_PASSWORD": "minioadmin",
+    "MINIO_HOST": "minio:9000",
+    "MINIO_HOST_URI": "minio:9000",
+    "MINIO_ACCESS_KEY": "minioadmin",
+    "MINIO_SECRET_KEY": "minioadmin",
+    "MINIO_BUCKET": "landing",
+    "ICEBERG_CATALOG_URI": "http://iceberg_catalog:8181",
+    "ICEBERG_WAREHOUSE": "s3a://bronze/warehouse"
+}
